@@ -1,0 +1,13 @@
+displayName = GuideAI - AI向导
+author = GuideAI Team
+version = 0.1.0
+includePDB = false
+includeSource = false
+hideCode = false
+hideResources = false
+includeDLL = false
+modReferences = 
+weakReferences = 
+dllReferences = 
+buildIgnore = .git*, .vs*, .vscode*, *.md, *.txt, *.bat, *.sh, *.ps1, *.cmd, *.log, *.tmp, *.temp, *.cache, *.pdb, *.suo, *.user, bin/, obj/
+side = Both

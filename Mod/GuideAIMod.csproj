@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 导入 tModLoader 的 targets -->
+  <Import Project="$(HOME)/.local/share/Steam/steamapps/common/tModLoader/tMLMod.targets" />
+
+  <PropertyGroup>
+    <AssemblyName>GuideAIMod</AssemblyName>
+    <TargetFramework>net8.0</TargetFramework>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- NuGet 包 -->
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+</Project>
