@@ -34,8 +34,17 @@ namespace GuideAIMod.Systems
 
             // 查找 MCP 桥接脚本
             string home = Environment.GetEnvironmentVariable("HOME") ?? "";
+            
+            // 路径1: 项目目录（开发时）
             _bridgeScriptPath = Path.Combine(home, 
-                "Projects/TerrariaWiki/terraria_wiki/mcp_bridge.py");
+                "Projects/TerrariaWiki/terraria_wiki/Python/mcp_bridge.py");
+            
+            // 路径2: Mod源目录
+            if (!File.Exists(_bridgeScriptPath))
+            {
+                string modPath = Path.GetDirectoryName(typeof(PythonBridge).Assembly.Location) ?? "";
+                _bridgeScriptPath = Path.Combine(modPath, "Python", "mcp_bridge.py");
+            }
             
             _available = !string.IsNullOrEmpty(_pythonPath) && 
                         File.Exists(_bridgeScriptPath);
