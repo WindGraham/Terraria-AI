@@ -14,7 +14,7 @@ namespace GuideAIMod
     {
         private UserInterface _interface = null!;
         private SimpleChatUI _ui = null!;
-        private bool _wasKeyDown = false;
+        private bool _tildeKeyPressed = false;
 
         public override void Load()
         {
@@ -36,15 +36,15 @@ namespace GuideAIMod
 
         public override void UpdateUI(GameTime gameTime)
         {
-            // H键切换 - 只在游戏界面有效
+            // `键(左上角)切换 - 只在游戏界面有效
             if (Main.gameMenu || Main.drawingPlayerChat) return;
             
-            bool keyDown = Main.keyState.IsKeyDown(Keys.H);
-            if (keyDown && !_wasKeyDown)
+            bool keyDown = Main.keyState.IsKeyDown(Keys.OemTilde);
+            if (keyDown && !_tildeKeyPressed)
             {
                 _ui?.Toggle();
             }
-            _wasKeyDown = keyDown;
+            _tildeKeyPressed = keyDown;
 
             if (_ui?.IsVisible == true)
             {
