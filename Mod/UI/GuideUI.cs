@@ -13,129 +13,129 @@ using GuideAIMod.Systems;
 namespace GuideAIMod.UI
 {
     /// <summary>
-    /// AI向导界面 - 简化稳定版
+    /// 简化版聊天UI - 稳定可靠
     /// </summary>
-    public class GuideUI : UIState
+    public class SimpleChatUI : UIState
     {
+        // UI元素
         private UIPanel _mainPanel = null!;
-        private UIPanel _chatPanel = null!;
-        private List<string> _messages = new List<string>();
+        private UITextPanel<string> _titleText = null!;
         private UIScrollbar _scrollbar = null!;
-        private UIElement _messageContainer = null!;
+        private UIList _chatList = null!;
+        private UIPanel _inputPanel = null!;
         
-        private string _inputText = "";
-        private bool _isVisible = false;
+        // 状态
+        private bool _visible = false;
         private bool _isLoading = false;
-        private int _scrollPosition = 0;
-        private int _lineHeight = 20;
-        private int _maxLines = 18;
+        private string _inputBuffer = "";
+        private List<string> _messages = new();
+        private int _maxMessages = 50;
         
-        private PythonBridge _pythonBridge = null!;
-        private bool _wasKeyDown = false;
+        // 系统
+        private PythonBridge _bridge = null!;
+        private bool _hKeyPressed = false;
 
-        public bool IsVisible => _isVisible;
+        public bool IsVisible => _visible;
 
         public override void OnInitialize()
         {
-            _pythonBridge = new PythonBridge();
+            _bridge = new PythonBridge();
             
-            // 主面板
+            // 主面板 - 固定大小
             _mainPanel = new UIPanel();
-            _mainPanel.SetPadding(0);
-            _mainPanel.Width.Set(500, 0);
-            _mainPanel.Height.Set(500, 0);
+            _mainPanel.SetPadding(8);
+            _mainPanel.Width.Set(480, 0);
+            _mainPanel.Height.Set(520, 0);
             _mainPanel.HAlign = 0.5f;
             _mainPanel.VAlign = 0.5f;
-            _mainPanel.BackgroundColor = new Color(40, 40, 40, 250);
-            _mainPanel.BorderColor = new Color(120, 120, 120, 255);
+            _mainPanel.BackgroundColor = new Color(35, 35, 40, 245);
+            _mainPanel.BorderColor = new Color(100, 100, 110, 255);
             
-            // 标题栏
-            var titleBar = new UIPanel();
-            titleBar.SetPadding(0);
-            titleBar.Width.Set(0, 1);
-            titleBar.Height.Set(40, 0);
-            titleBar.Top.Set(0, 0);
-            titleBar.BackgroundColor = new Color(60, 60, 80, 255);
-            _mainPanel.Append(titleBar);
-            
-            // 标题文字
-            var title = new UIText("AI向导", 0.9f, true);
-            title.HAlign = 0.5f;
-            title.VAlign = 0.5f;
-            titleBar.Append(title);
+            // 标题
+            _titleText = new UITextPanel<string>("AI向导 v1.0", 0.85f);
+            _titleText.Width.Set(0, 1f);
+            _titleText.Height.Set(32, 0);
+            _titleText.BackgroundColor = new Color(55, 55, 70, 200);
+            _mainPanel.Append(_titleText);
             
             // 关闭按钮
             var closeBtn = new UITextPanel<string>("X", 0.8f);
-            closeBtn.Width.Set(35, 0);
+            closeBtn.Width.Set(30, 0);
             closeBtn.Height.Set(30, 0);
-            closeBtn.Left.Set(-40, 1);
-            closeBtn.VAlign = 0.5f;
-            closeBtn.BackgroundColor = new Color(150, 50, 50, 200);
+            closeBtn.Left.Set(-34, 1f);
+            closeBtn.Top.Set(1, 0);
+            closeBtn.BackgroundColor = new Color(120, 50, 50, 200);
             closeBtn.OnLeftClick += (evt, el) => Hide();
-            titleBar.Append(closeBtn);
+            _titleText.Append(closeBtn);
             
-            // 聊天区域背景
-            _chatPanel = new UIPanel();
-            _chatPanel.SetPadding(10);
-            _chatPanel.Width.Set(-30, 1);
-            _chatPanel.Height.Set(360, 0);
-            _chatPanel.Left.Set(10, 0);
-            _chatPanel.Top.Set(50, 0);
-            _chatPanel.BackgroundColor = new Color(25, 25, 25, 200);
-            _mainPanel.Append(_chatPanel);
+            // 聊天列表容器
+            var listPanel = new UIPanel();
+            listPanel.SetPadding(6);
+            listPanel.Width.Set(0, 1f);
+            listPanel.Height.Set(380, 0);
+            listPanel.Top.Set(38, 0);
+            listPanel.BackgroundColor = new Color(20, 20, 25, 200);
+            _mainPanel.Append(listPanel);
+            
+            // 消息列表
+            _chatList = new UIList();
+            _chatList.Width.Set(-24, 1f);
+            _chatList.Height.Set(0, 1f);
+            _chatList.ListPadding = 4f;
+            listPanel.Append(_chatList);
             
             // 滚动条
             _scrollbar = new UIScrollbar();
-            _scrollbar.Width.Set(20, 0);
-            _scrollbar.Height.Set(360, 0);
-            _scrollbar.Left.Set(-25, 1);
-            _scrollbar.Top.Set(50, 0);
-            _scrollbar.SetView(10, 100);
-            _mainPanel.Append(_scrollbar);
+            _scrollbar.Width.Set(18, 0);
+            _scrollbar.Height.Set(-10, 1f);
+            _scrollbar.VAlign = 0.5f;
+            _scrollbar.Left.Set(-20, 1f);
+            listPanel.Append(_scrollbar);
+            _chatList.SetScrollbar(_scrollbar);
             
-            // 输入框背景
-            var inputBg = new UIPanel();
-            inputBg.SetPadding(5);
-            inputBg.Width.Set(-120, 1);
-            inputBg.Height.Set(35, 0);
-            inputBg.Left.Set(10, 0);
-            inputBg.Top.Set(-45, 1);
-            inputBg.BackgroundColor = new Color(50, 50, 50, 200);
-            _mainPanel.Append(inputBg);
+            // 输入区域
+            _inputPanel = new UIPanel();
+            _inputPanel.SetPadding(4);
+            _inputPanel.Width.Set(-100, 1f);
+            _inputPanel.Height.Set(38, 0);
+            _inputPanel.Top.Set(-44, 1f);
+            _inputPanel.BackgroundColor = new Color(45, 45, 50, 200);
+            _mainPanel.Append(_inputPanel);
             
             // 发送按钮
             var sendBtn = new UITextPanel<string>("发送", 0.8f);
             sendBtn.Width.Set(90, 0);
-            sendBtn.Height.Set(35, 0);
-            sendBtn.Left.Set(-100, 1);
-            sendBtn.Top.Set(-45, 1);
-            sendBtn.BackgroundColor = new Color(60, 100, 60, 200);
-            sendBtn.OnLeftClick += (evt, el) => SendMessage();
+            sendBtn.Height.Set(38, 0);
+            sendBtn.Left.Set(-94, 1f);
+            sendBtn.Top.Set(-44, 1f);
+            sendBtn.BackgroundColor = new Color(50, 100, 60, 200);
+            sendBtn.OnLeftClick += (evt, el) => TrySend();
             _mainPanel.Append(sendBtn);
             
             // 快捷按钮
-            AddQuickButton("Boss攻略", 10, -85);
-            AddQuickButton("NPC条件", 130, -85);
-            AddQuickButton("进度建议", 250, -85);
-            AddQuickButton("装备推荐", 370, -85);
+            AddQuickButton("Boss攻略", 0, -88);
+            AddQuickButton("NPC条件", 110, -88);
+            AddQuickButton("装备", 220, -88);
+            AddQuickButton("进度", 330, -88);
             
             Append(_mainPanel);
             
-            // 添加欢迎消息
-            AddMessage("系统", "欢迎使用AI向导！输入问题或点击快捷按钮。");
+            // 欢迎消息
+            AddSystemMessage("欢迎使用AI向导！");
+            AddSystemMessage("按H键打开/关闭，输入问题或点击快捷按钮。");
         }
         
         private void AddQuickButton(string text, float left, float top)
         {
-            var btn = new UITextPanel<string>(text, 0.7f);
-            btn.Width.Set(110, 0);
-            btn.Height.Set(28, 0);
+            var btn = new UITextPanel<string>(text, 0.72f);
+            btn.Width.Set(100, 0);
+            btn.Height.Set(26, 0);
             btn.Left.Set(left, 0);
-            btn.Top.Set(top, 1);
-            btn.BackgroundColor = new Color(70, 70, 90, 200);
+            btn.Top.Set(top, 1f);
+            btn.BackgroundColor = new Color(60, 60, 75, 200);
             btn.OnLeftClick += (evt, el) => {
-                _inputText = text;
-                SendMessage();
+                _inputBuffer = text;
+                UpdateInputDisplay();
             };
             _mainPanel.Append(btn);
         }
@@ -144,16 +144,17 @@ namespace GuideAIMod.UI
         {
             base.Update(gameTime);
             
-            if (!_isVisible) return;
+            if (!_visible) return;
             
             // H键切换显示
-            bool isKeyDown = Main.keyState.IsKeyDown(Keys.H);
-            if (isKeyDown && !_wasKeyDown && !Main.chatMode)
+            bool hDown = Main.keyState.IsKeyDown(Keys.H);
+            if (hDown && !_hKeyPressed && !Main.drawingPlayerChat)
             {
-                if (_isVisible) Hide();
-                else Show();
+                Toggle();
             }
-            _wasKeyDown = isKeyDown;
+            _hKeyPressed = hDown;
+            
+            if (!_visible) return;
             
             // ESC关闭
             if (Main.keyState.IsKeyDown(Keys.Escape) && !Main.oldKeyState.IsKeyDown(Keys.Escape))
@@ -162,282 +163,296 @@ namespace GuideAIMod.UI
                 return;
             }
             
-            // 处理输入
-            HandleInput();
-            
-            // 更新滚动条
-            int totalLines = Math.Max(_messages.Count, _maxLines);
-            _scrollbar.SetView(_maxLines, totalLines);
-            _scrollPosition = (int)_scrollbar.ViewPosition;
+            // 处理键盘输入
+            HandleKeyboardInput();
         }
         
-        private void HandleInput()
+        private void HandleKeyboardInput()
         {
-            var keyState = Main.keyState;
-            var oldKeyState = Main.oldKeyState;
+            // 获取键盘状态
+            KeyboardState state = Main.keyState;
+            KeyboardState oldState = Main.oldKeyState;
             
-            // 处理字符输入
-            for (int i = 0; i < 256; i++)
+            // 回车发送
+            if (state.IsKeyDown(Keys.Enter) && !oldState.IsKeyDown(Keys.Enter))
             {
-                if (keyState.IsKeyDown((Keys)i) && !oldKeyState.IsKeyDown((Keys)i))
+                TrySend();
+                return;
+            }
+            
+            // 遍历所有按键
+            Keys[] keys = state.GetPressedKeys();
+            foreach (Keys key in keys)
+            {
+                // 只处理新按下的键
+                if (!oldState.IsKeyDown(key))
                 {
-                    var key = (Keys)i;
-                    
-                    // 回车发送
-                    if (key == Keys.Enter)
-                    {
-                        SendMessage();
-                        return;
-                    }
-                    
-                    // 退格
-                    if (key == Keys.Back && _inputText.Length > 0)
-                    {
-                        _inputText = _inputText.Substring(0, _inputText.Length - 1);
-                        return;
-                    }
-                    
-                    // 空格
-                    if (key == Keys.Space)
-                    {
-                        _inputText += " ";
-                        return;
-                    }
-                    
-                    // 字母和数字
-                    string chars = GetCharsFromKey(key, keyState.IsKeyDown(Keys.LeftShift) || keyState.IsKeyDown(Keys.RightShift));
-                    if (!string.IsNullOrEmpty(chars) && _inputText.Length < 100)
-                    {
-                        _inputText += chars;
-                    }
+                    ProcessKey(key, state);
                 }
             }
         }
         
-        private string GetCharsFromKey(Keys key, bool shift)
+        private void ProcessKey(Keys key, KeyboardState state)
         {
-            // 数字键
+            // 退格
+            if (key == Keys.Back)
+            {
+                if (_inputBuffer.Length > 0)
+                    _inputBuffer = _inputBuffer.Substring(0, _inputBuffer.Length - 1);
+                return;
+            }
+            
+            // 空格
+            if (key == Keys.Space)
+            {
+                if (_inputBuffer.Length < 100)
+                    _inputBuffer += " ";
+                return;
+            }
+            
+            // 数字
             if (key >= Keys.D0 && key <= Keys.D9)
             {
-                if (shift)
-                {
-                    string[] shifted = { ")", "!", "@", "#", "$", "%", "^", "&", "*", "(" };
-                    return shifted[(int)key - (int)Keys.D0];
-                }
-                return ((int)key - (int)Keys.D0).ToString();
+                bool shift = state.IsKeyDown(Keys.LeftShift) || state.IsKeyDown(Keys.RightShift);
+                char c = GetCharFromKey(key, shift);
+                if (c != '\0' && _inputBuffer.Length < 100)
+                    _inputBuffer += c;
+                return;
             }
             
             // 字母
             if (key >= Keys.A && key <= Keys.Z)
             {
-                char c = (char)((int)key - (int)Keys.A + 'a');
-                if (shift) c = char.ToUpper(c);
-                return c.ToString();
+                bool shift = state.IsKeyDown(Keys.LeftShift) || state.IsKeyDown(Keys.RightShift);
+                char c = shift ? (char)key : char.ToLower((char)key);
+                if (_inputBuffer.Length < 100)
+                    _inputBuffer += c;
+                return;
             }
             
-            // 标点符号
+            // 处理其他按键
+            char special = GetSpecialChar(key, state);
+            if (special != '\0' && _inputBuffer.Length < 100)
+                _inputBuffer += special;
+        }
+        
+        private char GetCharFromKey(Keys key, bool shift)
+        {
+            int num = key - Keys.D0;
+            if (shift)
+            {
+                string[] shifted = { ")", "!", "@", "#", "$", "%", "^", "&", "*", "(" };
+                return shifted[num][0];
+            }
+            return (char)('0' + num);
+        }
+        
+        private char GetSpecialChar(Keys key, KeyboardState state)
+        {
+            bool shift = state.IsKeyDown(Keys.LeftShift) || state.IsKeyDown(Keys.RightShift);
+            
             switch (key)
             {
-                case Keys.OemQuestion: return shift ? "?" : "/";
-                case Keys.OemComma: return shift ? "<" : ",";
-                case Keys.OemPeriod: return shift ? ">" : ".";
-                case Keys.OemSemicolon: return shift ? ":" : ";";
-                case Keys.OemQuotes: return shift ? "\"" : "'";
-                case Keys.OemOpenBrackets: return shift ? "{" : "[";
-                case Keys.OemCloseBrackets: return shift ? "}" : "]";
-                case Keys.OemPipe: return shift ? "|" : "\\";
-                case Keys.OemMinus: return shift ? "_" : "-";
-                case Keys.OemPlus: return shift ? "+" : "=";
-                case Keys.OemTilde: return shift ? "~" : "`";
+                case Keys.OemQuestion: return shift ? '?' : '/';
+                case Keys.OemComma: return shift ? '<' : ',';
+                case Keys.OemPeriod: return shift ? '>' : '.';
+                case Keys.OemSemicolon: return shift ? ':' : ';';
+                case Keys.OemQuotes: return shift ? '"' : '\'';
+                case Keys.OemMinus: return shift ? '_' : '-';
+                case Keys.OemPlus: return shift ? '+' : '=';
+                case Keys.OemOpenBrackets: return shift ? '{' : '[';
+                case Keys.OemCloseBrackets: return shift ? '}' : ']';
+                case Keys.OemPipe: return shift ? '|' : '\\';
+                case Keys.OemTilde: return shift ? '~' : '`';
             }
-            
-            return "";
+            return '\0';
         }
 
-        public override void Draw(SpriteBatch spriteBatch)
+        private void TrySend()
         {
-            if (!_isVisible) return;
+            if (_isLoading || string.IsNullOrWhiteSpace(_inputBuffer)) return;
             
-            base.Draw(spriteBatch);
+            string question = _inputBuffer.Trim();
+            _inputBuffer = "";
+            UpdateInputDisplay();
             
-            // 绘制输入框文字
-            DrawInputText(spriteBatch);
+            // 添加玩家消息
+            AddPlayerMessage(question);
             
-            // 绘制聊天内容
-            DrawChatMessages(spriteBatch);
-        }
-        
-        private void DrawInputText(SpriteBatch spriteBatch)
-        {
-            Vector2 pos = new Vector2(
-                _mainPanel.Left.Pixels + 20,
-                _mainPanel.Top.Pixels + _mainPanel.Height.Pixels - 38
-            );
-            
-            string displayText = _inputText;
-            if (Main.GameUpdateCount % 40 < 20) // 光标闪烁
-                displayText += "|";
-            
-            Utils.DrawBorderStringFourWay(spriteBatch, Main.fontMouseText, displayText,
-                pos.X, pos.Y, Color.White, Color.Black, Vector2.Zero, 0.9f);
-        }
-        
-        private void DrawChatMessages(SpriteBatch spriteBatch)
-        {
-            float x = _mainPanel.Left.Pixels + 20;
-            float y = _mainPanel.Top.Pixels + 60;
-            float width = _mainPanel.Width.Pixels - 60;
-            
-            int startIdx = Math.Max(0, _scrollPosition);
-            int endIdx = Math.Min(_messages.Count, startIdx + _maxLines);
-            
-            for (int i = startIdx; i < endIdx; i++)
-            {
-                string msg = _messages[i];
-                Color color = msg.StartsWith("你:") ? new Color(150, 200, 255) :
-                             msg.StartsWith("AI:") ? new Color(150, 255, 150) :
-                             new Color(200, 200, 200);
-                
-                // 自动换行绘制
-                DrawWrappedText(spriteBatch, msg, x, y, width, color);
-                
-                y += _lineHeight * GetLineCount(msg, width);
-            }
-        }
-        
-        private void DrawWrappedText(SpriteBatch sb, string text, float x, float y, float maxWidth, Color color)
-        {
-            string[] lines = text.Split('\n');
-            float curY = y;
-            
-            foreach (var line in lines)
-            {
-                if (string.IsNullOrEmpty(line)) continue;
-                
-                // 简单截断，确保不超出
-                string drawLine = line;
-                var font = Main.fontMouseText;
-                
-                while (font.MeasureString(drawLine).X * 0.8f > maxWidth && drawLine.Length > 0)
-                {
-                    drawLine = drawLine.Substring(0, drawLine.Length - 1);
-                }
-                
-                Utils.DrawBorderStringFourWay(sb, font, drawLine, x, curY, color, Color.Black, Vector2.Zero, 0.8f);
-                curY += _lineHeight;
-            }
-        }
-        
-        private int GetLineCount(string text, float maxWidth)
-        {
-            return text.Split('\n').Length;
-        }
-
-        private void AddMessage(string sender, string text)
-        {
-            string prefix = sender == "你" ? "你:" : sender == "AI" ? "AI:" : "系统:";
-            _messages.Add(prefix + " " + text);
-            
-            // 限制消息数量
-            if (_messages.Count > 100)
-                _messages.RemoveAt(0);
-            
-            // 滚动到底部
-            _scrollbar.ViewPosition = Math.Max(0, _messages.Count - _maxLines);
-        }
-
-        private async void SendMessage()
-        {
-            if (_isLoading || string.IsNullOrWhiteSpace(_inputText)) return;
-            
-            string question = _inputText.Trim();
-            _inputText = "";
             _isLoading = true;
+            _titleText.SetText("AI向导 - 思考中...");
             
-            AddMessage("你", question);
-            
-            await Task.Run(() => {
-                try
-                {
-                    string answer = GetAnswer(question);
-                    Main.Invoke(() => {
-                        AddMessage("AI", answer);
-                        _isLoading = false;
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Main.Invoke(() => {
-                        AddMessage("系统", "错误: " + ex.Message);
-                        _isLoading = false;
-                    });
-                }
+            // 异步获取回答
+            Task.Run(() => {
+                string answer = GetAnswer(question);
+                
+                // 在主线程更新UI（使用 Mod 的调度）
+                Main.QueueMainThreadAction(() => {
+                    AddAIMessage(answer);
+                    _isLoading = false;
+                    _titleText.SetText("AI向导 v1.0");
+                });
             });
         }
         
         private string GetAnswer(string question)
         {
-            var mod = ModContent.GetInstance<GuideAIMod>();
-            
-            // 获取玩家进度
-            string progress = "";
-            if (mod?.Progress != null && Main.LocalPlayer != null)
+            try
             {
-                try
-                {
-                    progress = mod.Progress.GenerateProgressReport(Main.LocalPlayer);
-                }
-                catch { }
-            }
-            
-            // 1. 尝试Python知识库
-            if (_pythonBridge?.IsAvailable == true)
-            {
-                var result = _pythonBridge.Ask(question, progress);
-                if (result.Success && !string.IsNullOrEmpty(result.Answer) && result.Answer.Length > 20)
-                {
-                    return result.Answer.Substring(0, Math.Min(500, result.Answer.Length));
-                }
-            }
-            
-            // 2. 本地知识库
-            string local = mod?.Knowledge?.Search(question);
-            if (!string.IsNullOrEmpty(local) && local.Length > 20)
-            {
-                return local.Substring(0, Math.Min(500, local.Length));
-            }
-            
-            // 3. AI API
-            if (mod?.AI?.IsConfigured == true)
-            {
-                var task = Task.Run(async () => {
-                    string prompt = $"你是泰拉瑞亚专家。{progress}\n\n问题：{question}\n简洁回答：";
-                    return await mod.AI.AskAIAsync(prompt, "");
-                });
+                var mod = ModContent.GetInstance<GuideAIMod>();
                 
-                if (task.Wait(10000))
-                    return task.Result;
+                // 获取进度
+                string progress = "";
+                if (mod?.Progress != null && Main.LocalPlayer != null)
+                {
+                    try { progress = mod.Progress.GenerateProgressReport(Main.LocalPlayer); }
+                    catch { }
+                }
+                
+                // 1. Python知识库
+                if (_bridge?.IsAvailable == true)
+                {
+                    var result = _bridge.Ask(question, progress);
+                    if (result.Success && result.Answer?.Length > 10)
+                        return Truncate(result.Answer, 600);
+                }
+                
+                // 2. 本地知识
+                string local = mod?.Knowledge?.Search(question);
+                if (!string.IsNullOrEmpty(local) && local.Length > 10)
+                    return Truncate(local, 600);
+                
+                // 3. AI API
+                if (mod?.AI?.IsConfigured == true)
+                {
+                    var task = Task.Run(async () => {
+                        string prompt = $"泰拉瑞亚游戏问题。{progress}\n问题：{question}\n简洁回答（200字内）：";
+                        return await mod.AI.AskAIAsync(prompt, "");
+                    });
+                    
+                    if (task.Wait(12000) && task.IsCompleted)
+                        return Truncate(task.Result, 500);
+                }
+                
+                return "抱歉，无法回答。请尝试询问Boss攻略或NPC相关问题。";
+            }
+            catch (Exception ex)
+            {
+                return "错误：" + ex.Message;
+            }
+        }
+        
+        private string Truncate(string text, int maxLen)
+        {
+            if (text.Length <= maxLen) return text;
+            return text.Substring(0, maxLen) + "...";
+        }
+        
+        private void AddPlayerMessage(string text)
+        {
+            AddMessage("你", text, new Color(150, 200, 255));
+        }
+        
+        private void AddAIMessage(string text)
+        {
+            AddMessage("AI", text, new Color(150, 255, 150));
+        }
+        
+        private void AddSystemMessage(string text)
+        {
+            AddMessage("系统", text, new Color(200, 200, 200));
+        }
+        
+        private void AddMessage(string sender, string text, Color color)
+        {
+            var panel = new UIPanel();
+            panel.SetPadding(6);
+            panel.Width.Set(0, 1f);
+            panel.BackgroundColor = sender == "你" ? new Color(40, 60, 90, 180) : 
+                                    sender == "AI" ? new Color(40, 80, 50, 180) : 
+                                    new Color(60, 60, 60, 180);
+            
+            // 发送者标签
+            var senderLabel = new UIText(sender + ":", 0.7f, true);
+            senderLabel.TextColor = color;
+            senderLabel.Top.Set(0, 0);
+            panel.Append(senderLabel);
+            
+            // 消息内容 - 使用小字体
+            var content = new UIText(text, 0.78f);
+            content.TextColor = Color.White;
+            content.Top.Set(18, 0);
+            content.Width.Set(-10, 1f);
+            content.IsWrapped = true;
+            panel.Append(content);
+            
+            // 估算高度
+            int lines = Math.Max(1, text.Split('\n').Length);
+            int wrapLines = text.Length / 40;
+            int totalLines = Math.Max(lines, wrapLines);
+            panel.Height.Set(30 + totalLines * 16, 0);
+            
+            _chatList.Add(panel);
+            
+            // 限制数量 - 安全移除
+            var children = new List<UIElement>(_chatList.Children);
+            while (children.Count > _maxMessages)
+            {
+                _chatList.RemoveChild(children[0]);
+                children.RemoveAt(0);
             }
             
-            return "抱歉，无法回答。请检查网络或尝试其他问题。";
+            // 滚动到底
+            _scrollbar.ViewPosition = float.MaxValue;
+        }
+
+        public override void Draw(SpriteBatch spriteBatch)
+        {
+            if (!_visible) return;
+            
+            base.Draw(spriteBatch);
+            
+            // 绘制输入框文字
+            DrawInputText(spriteBatch);
+        }
+        
+        private void DrawInputText(SpriteBatch sb)
+        {
+            if (_mainPanel == null) return;
+            
+            Vector2 pos = new Vector2(
+                _mainPanel.Left.Pixels + 16,
+                _mainPanel.Top.Pixels + _mainPanel.Height.Pixels - 36
+            );
+            
+            string display = _inputBuffer;
+            if (Main.GameUpdateCount % 30 < 15) // 光标
+                display += "|";
+            
+            Utils.DrawBorderStringFourWay(sb, Terraria.GameContent.FontAssets.ItemStack.Value, display,
+                pos.X, pos.Y, Color.White, Color.Black, Vector2.Zero, 0.9f);
+        }
+        
+        private void UpdateInputDisplay()
+        {
+            // 输入已更新，会在Draw中显示
         }
 
         public void Show()
         {
-            _isVisible = true;
+            _visible = true;
             Main.playerInventory = false;
-            _inputText = "";
+            _hKeyPressed = true; // 防止立即关闭
         }
 
         public void Hide()
         {
-            _isVisible = false;
-            _inputText = "";
+            _visible = false;
         }
 
         public void Toggle()
         {
-            if (_isVisible) Hide();
+            if (_visible) Hide();
             else Show();
         }
     }

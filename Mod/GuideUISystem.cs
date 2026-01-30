@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -10,60 +9,61 @@ namespace GuideAIMod
 {
     /// <summary>
     /// UI 系统管理
-    /// 处理界面的显示/隐藏和快捷键
     /// </summary>
     public class GuideUISystem : ModSystem
     {
-        private UserInterface _guideInterface = null!;
-        private GuideUI _guideUI = null!;
-        private bool _lastKeyState = false;
+        private UserInterface _interface = null!;
+        private SimpleChatUI _ui = null!;
+        private bool _wasKeyDown = false;
 
         public override void Load()
         {
             if (!Main.dedServ)
             {
-                _guideUI = new GuideUI();
-                _guideUI.Activate();
+                _ui = new SimpleChatUI();
+                _ui.Activate();
                 
-                _guideInterface = new UserInterface();
-                _guideInterface.SetState(_guideUI);
+                _interface = new UserInterface();
+                _interface.SetState(_ui);
             }
         }
 
         public override void Unload()
         {
-            _guideUI?.Deactivate();
-            _guideInterface = null!;
+            _ui?.Deactivate();
+            _interface = null!;
         }
 
         public override void UpdateUI(GameTime gameTime)
         {
-            // H 键切换界面
-            bool currentKeyState = Main.keyState.IsKeyDown(Keys.H);
-            if (currentKeyState && !_lastKeyState && !Main.drawingPlayerChat && !Main.editSign)
+            // H键切换 - 只在游戏界面有效
+            if (Main.gameMenu || Main.drawingPlayerChat) return;
+            
+            bool keyDown = Main.keyState.IsKeyDown(Keys.H);
+            if (keyDown && !_wasKeyDown)
             {
-                _guideUI?.Toggle();
+                _ui?.Toggle();
             }
-            _lastKeyState = currentKeyState;
+            _wasKeyDown = keyDown;
 
-            if (_guideUI?.Visible == true)
+            if (_ui?.IsVisible == true)
             {
-                _guideInterface?.Update(gameTime);
+                _interface?.Update(gameTime);
             }
         }
 
-        public override void ModifyInterfaceLayers(List<GameInterfaceLayer> layers)
+        public override void ModifyInterfaceLayers(System.Collections.Generic.List<GameInterfaceLayer> layers)
         {
-            int mouseTextIndex = layers.FindIndex(layer => layer.Name.Equals("Vanilla: Mouse Text"));
-            if (mouseTextIndex != -1)
+            int index = layers.FindIndex(layer => layer.Name.Equals("Vanilla: Mouse Text"));
+            if (index != -1)
             {
-                layers.Insert(mouseTextIndex, new LegacyGameInterfaceLayer(
-                    "GuideAI: GuideUI",
+                layers.Insert(index, new LegacyGameInterfaceLayer(
+                    "GuideAI: ChatUI",
                     delegate
                     {
-                        if (_guideUI?.Visible == true)
+                        if (_ui?.IsVisible == true)
                         {
-                            _guideInterface.Draw(Main.spriteBatch, new GameTime());
+                            _interface.Draw(Main.spriteBatch, new GameTime());
                         }
                         return true;
                     },
