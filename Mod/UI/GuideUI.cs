@@ -148,7 +148,7 @@ namespace GuideAIMod.UI
             
             // H键切换显示
             bool hDown = Main.keyState.IsKeyDown(Keys.H);
-            if (hDown && !_hKeyPressed && !Main.drawingPlayerChat)
+            if (hDown && !_hKeyPressed && !Main.drawingPlayerChat && Main.chatText.Length == 0)
             {
                 Toggle();
             }
@@ -163,109 +163,61 @@ namespace GuideAIMod.UI
                 return;
             }
             
-            // 处理键盘输入
-            HandleKeyboardInput();
+            // 使用Terraria的文本输入系统
+            HandleTextInput();
         }
         
-        private void HandleKeyboardInput()
+        private string _lastChatText = "";
+        
+        private void HandleTextInput()
         {
-            // 获取键盘状态
-            KeyboardState state = Main.keyState;
-            KeyboardState oldState = Main.oldKeyState;
+            // 启用聊天输入模式，劫持游戏输入
+            Main.chatRelease = false;
             
-            // 回车发送
-            if (state.IsKeyDown(Keys.Enter) && !oldState.IsKeyDown(Keys.Enter))
+            // 检测回车发送
+            if (Main.keyState.IsKeyDown(Keys.Enter) && !Main.oldKeyState.IsKeyDown(Keys.Enter))
             {
                 TrySend();
+                Main.chatText = "";
+                _lastChatText = "";
                 return;
             }
             
-            // 遍历所有按键
-            Keys[] keys = state.GetPressedKeys();
-            foreach (Keys key in keys)
-            {
-                // 只处理新按下的键
-                if (!oldState.IsKeyDown(key))
-                {
-                    ProcessKey(key, state);
-                }
-            }
-        }
-        
-        private void ProcessKey(Keys key, KeyboardState state)
-        {
-            // 退格
-            if (key == Keys.Back)
+            // 退格键处理（Terraria的输入系统可能不完全处理）
+            if (Main.keyState.IsKeyDown(Keys.Back) && !Main.oldKeyState.IsKeyDown(Keys.Back))
             {
                 if (_inputBuffer.Length > 0)
                     _inputBuffer = _inputBuffer.Substring(0, _inputBuffer.Length - 1);
                 return;
             }
             
-            // 空格
-            if (key == Keys.Space)
+            // 同步Terraria的输入缓冲区到我们的输入
+            // Main.chatText 是游戏当前捕获的文本输入
+            if (Main.chatText != _lastChatText)
             {
-                if (_inputBuffer.Length < 100)
-                    _inputBuffer += " ";
-                return;
+                string newText = Main.chatText;
+                // 只取新输入的字符
+                if (newText.Length > _lastChatText.Length && newText.StartsWith(_lastChatText))
+                {
+                    string added = newText.Substring(_lastChatText.Length);
+                    if (_inputBuffer.Length + added.Length <= 100)
+                        _inputBuffer += added;
+                }
+                else if (newText.Length < _lastChatText.Length)
+                {
+                    // 删除字符时重新计算
+                    int diff = _lastChatText.Length - newText.Length;
+                    if (_inputBuffer.Length >= diff)
+                        _inputBuffer = _inputBuffer.Substring(0, _inputBuffer.Length - diff);
+                }
+                else
+                {
+                    // 直接替换（粘贴等情况）
+                    _inputBuffer = newText.Length > 100 ? newText.Substring(0, 100) : newText;
+                }
+                
+                _lastChatText = newText;
             }
-            
-            // 数字
-            if (key >= Keys.D0 && key <= Keys.D9)
-            {
-                bool shift = state.IsKeyDown(Keys.LeftShift) || state.IsKeyDown(Keys.RightShift);
-                char c = GetCharFromKey(key, shift);
-                if (c != '\0' && _inputBuffer.Length < 100)
-                    _inputBuffer += c;
-                return;
-            }
-            
-            // 字母
-            if (key >= Keys.A && key <= Keys.Z)
-            {
-                bool shift = state.IsKeyDown(Keys.LeftShift) || state.IsKeyDown(Keys.RightShift);
-                char c = shift ? (char)key : char.ToLower((char)key);
-                if (_inputBuffer.Length < 100)
-                    _inputBuffer += c;
-                return;
-            }
-            
-            // 处理其他按键
-            char special = GetSpecialChar(key, state);
-            if (special != '\0' && _inputBuffer.Length < 100)
-                _inputBuffer += special;
-        }
-        
-        private char GetCharFromKey(Keys key, bool shift)
-        {
-            int num = key - Keys.D0;
-            if (shift)
-            {
-                string[] shifted = { ")", "!", "@", "#", "$", "%", "^", "&", "*", "(" };
-                return shifted[num][0];
-            }
-            return (char)('0' + num);
-        }
-        
-        private char GetSpecialChar(Keys key, KeyboardState state)
-        {
-            bool shift = state.IsKeyDown(Keys.LeftShift) || state.IsKeyDown(Keys.RightShift);
-            
-            switch (key)
-            {
-                case Keys.OemQuestion: return shift ? '?' : '/';
-                case Keys.OemComma: return shift ? '<' : ',';
-                case Keys.OemPeriod: return shift ? '>' : '.';
-                case Keys.OemSemicolon: return shift ? ':' : ';';
-                case Keys.OemQuotes: return shift ? '"' : '\'';
-                case Keys.OemMinus: return shift ? '_' : '-';
-                case Keys.OemPlus: return shift ? '+' : '=';
-                case Keys.OemOpenBrackets: return shift ? '{' : '[';
-                case Keys.OemCloseBrackets: return shift ? '}' : ']';
-                case Keys.OemPipe: return shift ? '|' : '\\';
-                case Keys.OemTilde: return shift ? '~' : '`';
-            }
-            return '\0';
         }
 
         private void TrySend()
@@ -274,7 +226,8 @@ namespace GuideAIMod.UI
             
             string question = _inputBuffer.Trim();
             _inputBuffer = "";
-            UpdateInputDisplay();
+            Main.chatText = "";
+            _lastChatText = "";
             
             // 添加玩家消息
             AddPlayerMessage(question);
@@ -508,11 +461,19 @@ namespace GuideAIMod.UI
             _visible = true;
             Main.playerInventory = false;
             _hKeyPressed = true; // 防止立即关闭
+            
+            // 初始化输入系统
+            Main.chatText = _inputBuffer;
+            _lastChatText = _inputBuffer;
+            Main.chatRelease = false;
         }
 
         public void Hide()
         {
             _visible = false;
+            _inputBuffer = "";
+            Main.chatText = "";
+            _lastChatText = "";
         }
 
         public void Toggle()
