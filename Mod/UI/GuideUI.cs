@@ -9,6 +9,7 @@ using Terraria.GameContent.UI.Elements;
 using Terraria.UI;
 using Terraria.ModLoader;
 using GuideAIMod.Systems;
+using ReLogic.Graphics;
 
 namespace GuideAIMod.UI
 {
@@ -33,7 +34,7 @@ namespace GuideAIMod.UI
         
         // 系统
         private PythonBridge _bridge = null!;
-        private bool _hKeyPressed = false;
+        private bool _tildeKeyPressed = false;
 
         public bool IsVisible => _visible;
 
@@ -122,7 +123,7 @@ namespace GuideAIMod.UI
             
             // 欢迎消息
             AddSystemMessage("欢迎使用AI向导！");
-            AddSystemMessage("按H键打开/关闭，输入问题或点击快捷按钮。");
+            AddSystemMessage("按 ` 键(左上角Esc下面)打开/关闭，输入问题或点击快捷按钮。");
         }
         
         private void AddQuickButton(string text, float left, float top)
@@ -146,13 +147,13 @@ namespace GuideAIMod.UI
             
             if (!_visible) return;
             
-            // H键切换显示
-            bool hDown = Main.keyState.IsKeyDown(Keys.H);
-            if (hDown && !_hKeyPressed && !Main.drawingPlayerChat && Main.chatText.Length == 0)
+            // `键(左上角)切换显示
+            bool tildeDown = Main.keyState.IsKeyDown(Keys.OemTilde);
+            if (tildeDown && !_tildeKeyPressed && !Main.drawingPlayerChat && Main.chatText.Length == 0)
             {
                 Toggle();
             }
-            _hKeyPressed = hDown;
+            _tildeKeyPressed = tildeDown;
             
             if (!_visible) return;
             
@@ -342,21 +343,31 @@ namespace GuideAIMod.UI
         
         private string BuildPrompt(string question, string progress, string knowledge)
         {
+            string basePrompt = "你是泰拉瑞亚游戏AI向导。你的任务是为玩家提供准确、实用的游戏建议。\n\n" +
+                "工作方式：\n" +
+                "1. 首先查询知识库获取相关信息（已完成）\n" +
+                "2. 结合玩家当前进度分析\n" +
+                "3. 给出简洁有用的建议\n\n" +
+                "规则：\n" +
+                "- 回答要简洁明了（300字内）\n" +
+                "- 涉及具体物品时给出准确名称\n" +
+                "- 如果是Boss攻略，简述召唤条件和关键技巧\n" +
+                "- 基于玩家当前进度给出建议\n" +
+                "- 始终用中文回答\n";
+            
             if (!string.IsNullOrEmpty(knowledge) && knowledge.Length > 50)
             {
-                string kbSnippet = knowledge.Length > 800 ? knowledge.Substring(0, 800) : knowledge;
-                return "你是泰拉瑞亚游戏专家。基于以下知识库信息回答问题：\n\n" +
-                       "【知识库信息】\n" + kbSnippet + "\n\n" +
+                string kbSnippet = knowledge.Length > 1000 ? knowledge.Substring(0, 1000) : knowledge;
+                return basePrompt + "\n【已查询知识库】\n" + kbSnippet + "\n\n" +
                        "【玩家进度】\n" + progress + "\n\n" +
                        "【玩家问题】\n" + question + "\n\n" +
-                       "请基于知识库信息，给玩家一个简洁有用的回答（300字内）：";
+                       "请基于以上知识库信息回答：";
             }
             else
             {
-                return "你是泰拉瑞亚游戏专家。\n\n" +
-                       "【玩家进度】\n" + progress + "\n\n" +
+                return basePrompt + "\n【玩家进度】\n" + progress + "\n\n" +
                        "【玩家问题】\n" + question + "\n\n" +
-                       "请给玩家一个简洁有用的回答（300字内）：";
+                       "请回答（知识库暂无相关信息）：";
             }
         }
         
@@ -383,9 +394,20 @@ namespace GuideAIMod.UI
         
         private void AddMessage(string sender, string text, Color color)
         {
+            // 计算实际需要的高度（每行约40字符，每行16像素）
+            int charsPerLine = 38;
+            string[] paragraphs = text.Split('\n');
+            int totalLines = 0;
+            foreach (var para in paragraphs)
+            {
+                totalLines += Math.Max(1, (para.Length + charsPerLine - 1) / charsPerLine);
+            }
+            int panelHeight = 30 + totalLines * 14 + 10;
+            
             var panel = new UIPanel();
             panel.SetPadding(6);
             panel.Width.Set(0, 1f);
+            panel.Height.Set(panelHeight, 0);
             panel.BackgroundColor = sender == "你" ? new Color(40, 60, 90, 180) : 
                                     sender == "AI" ? new Color(40, 80, 50, 180) : 
                                     new Color(60, 60, 60, 180);
@@ -396,32 +418,35 @@ namespace GuideAIMod.UI
             senderLabel.Top.Set(0, 0);
             panel.Append(senderLabel);
             
-            // 消息内容 - 使用小字体
-            var content = new UIText(text, 0.78f);
+            // 消息内容 - 使用自动换行的WrappedTextPanel
+            var content = new WrappedTextPanel(text, 0.75f);
             content.TextColor = Color.White;
             content.Top.Set(18, 0);
             content.Width.Set(-10, 1f);
-            content.IsWrapped = true;
+            content.Height.Set(panelHeight - 28, 0);
             panel.Append(content);
-            
-            // 估算高度
-            int lines = Math.Max(1, text.Split('\n').Length);
-            int wrapLines = text.Length / 40;
-            int totalLines = Math.Max(lines, wrapLines);
-            panel.Height.Set(30 + totalLines * 16, 0);
             
             _chatList.Add(panel);
             
             // 限制数量 - 安全移除
-            var children = new List<UIElement>(_chatList.Children);
-            while (children.Count > _maxMessages)
+            var childrenList = new List<UIElement>(_chatList.Children);
+            while (childrenList.Count > _maxMessages)
             {
-                _chatList.RemoveChild(children[0]);
-                children.RemoveAt(0);
+                _chatList.RemoveChild(childrenList[0]);
+                childrenList.RemoveAt(0);
             }
             
-            // 滚动到底
-            _scrollbar.ViewPosition = float.MaxValue;
+            // 强制重新计算布局并滚动到底
+            _chatList.Recalculate();
+            Recalculate();
+            
+            // 延迟滚动确保渲染完成
+            Main.QueueMainThreadAction(() => {
+                try {
+                    float maxScroll = Math.Max(0, childrenList.Count * panelHeight - 380);
+                    _scrollbar.ViewPosition = maxScroll + 100;
+                } catch { }
+            });
         }
 
         public override void Draw(SpriteBatch spriteBatch)
@@ -460,7 +485,7 @@ namespace GuideAIMod.UI
         {
             _visible = true;
             Main.playerInventory = false;
-            _hKeyPressed = true; // 防止立即关闭
+            _tildeKeyPressed = true; // 防止立即关闭
             
             // 初始化输入系统
             Main.chatText = _inputBuffer;
@@ -480,6 +505,101 @@ namespace GuideAIMod.UI
         {
             if (_visible) Hide();
             else Show();
+        }
+    }
+    
+    /// <summary>
+    /// 自动换行文本面板
+    /// </summary>
+    public class WrappedTextPanel : UIElement
+    {
+        private string _text;
+        private float _textScale;
+        private DynamicSpriteFont _font;
+        
+        public Color TextColor { get; set; } = Color.White;
+        
+        public WrappedTextPanel(string text, float scale = 1f)
+        {
+            _text = text ?? "";
+            _textScale = scale;
+            _font = Terraria.GameContent.FontAssets.MouseText.Value;
+        }
+        
+        public void SetText(string text)
+        {
+            _text = text ?? "";
+        }
+        
+        protected override void DrawSelf(SpriteBatch spriteBatch)
+        {
+            base.DrawSelf(spriteBatch);
+            
+            CalculatedStyle style = GetInnerDimensions();
+            Vector2 position = new Vector2(style.X + 4, style.Y + 4);
+            float maxWidth = style.Width - 8;
+            
+            string[] paragraphs = _text.Split('\n');
+            float yOffset = 0;
+            float lineHeight = _font.LineSpacing * _textScale;
+            
+            foreach (var paragraph in paragraphs)
+            {
+                string remaining = paragraph;
+                while (remaining.Length > 0)
+                {
+                    string line = GetLineThatFits(remaining, maxWidth);
+                    if (line.Length == 0) break;
+                    
+                    Utils.DrawBorderStringFourWay(spriteBatch, _font, line,
+                        position.X, position.Y + yOffset, TextColor, Color.Black, Vector2.Zero, _textScale);
+                    
+                    yOffset += lineHeight;
+                    remaining = remaining.Substring(line.Length).TrimStart();
+                }
+                yOffset += lineHeight * 0.3f; // 段落间距
+            }
+        }
+        
+        private string GetLineThatFits(string text, float maxWidth)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            
+            // 先尝试整行
+            if (_font.MeasureString(text).X * _textScale <= maxWidth)
+                return text;
+            
+            // 二分查找合适的字符数
+            int left = 0, right = text.Length;
+            while (left < right)
+            {
+                int mid = (left + right + 1) / 2;
+                string substr = text.Substring(0, mid);
+                float width = _font.MeasureString(substr).X * _textScale;
+                
+                if (width <= maxWidth)
+                    left = mid;
+                else
+                    right = mid - 1;
+            }
+            
+            // 如果一行都放不下，至少放一个字符
+            if (left == 0 && text.Length > 0)
+                left = 1;
+            
+            // 尝试在单词边界截断
+            int breakPoint = left;
+            for (int i = left; i > 0; i--)
+            {
+                if (char.IsWhiteSpace(text[i]) || i == 0 || 
+                    (char.IsLetterOrDigit(text[i-1]) && !char.IsLetterOrDigit(text[i])))
+                {
+                    breakPoint = i;
+                    break;
+                }
+            }
+            
+            return text.Substring(0, Math.Max(1, breakPoint)).TrimEnd();
         }
     }
 }
