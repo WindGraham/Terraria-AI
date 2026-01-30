@@ -17,7 +17,6 @@ namespace GuideAIMod
     {
         private PythonBridge _bridge = null!;
         private bool _isProcessing = false;
-        private string _lastChatText = "";
         
         // 触发前缀
         private readonly string[] _triggers = { "/ai", "/ask", "/guide", "?" };
@@ -26,52 +25,50 @@ namespace GuideAIMod
         {
             _bridge = new PythonBridge();
             ModContent.GetInstance<GuideAIMod>().Logger.Info("AI聊天系统已加载！触发方式: /ai 问题 或 ?问题");
+            
+            // 添加帮助提示
+            if (!Main.dedServ)
+            {
+                Main.QueueMainThreadAction(() => {
+                    Main.NewText("[AI向导] 按回车打开聊天，输入 /ai 你的问题 或 ?问题", Color.Green);
+                });
+            }
+        }
+        
+        public override void PreUpdateEntities()
+        {
+            // 在实体更新前检测（比PostUpdate更早）
+            CheckAIQuery();
+        }
+        
+        private string _pendingText = null;
+        
+        /// <summary>
+        /// 检测AI查询 - 使用聊天文本变化检测
+        /// </summary>
+        private void CheckAIQuery()
+        {
+            // 关键检测：当聊天框关闭且之前有内容时
+            if (!Main.drawingPlayerChat && !string.IsNullOrEmpty(_pendingText))
+            {
+                string text = _pendingText;
+                _pendingText = null;
+                
+                string query = ExtractQuery(text);
+                if (!string.IsNullOrEmpty(query) && !_isProcessing)
+                {
+                    ProcessAIQuery(query);
+                }
+            }
         }
         
         public override void PostUpdateEverything()
         {
-            // 检测玩家发送聊天消息
-            CheckAIQuery();
-        }
-        
-        /// <summary>
-        /// 检测AI查询
-        /// </summary>
-        private void CheckAIQuery()
-        {
-            // 只在聊天界面开启时检测
-            if (!Main.drawingPlayerChat) 
+            // 跟踪聊天文本
+            if (Main.drawingPlayerChat)
             {
-                _lastChatText = "";
-                return;
+                _pendingText = Main.chatText;
             }
-            
-            string currentText = Main.chatText;
-            
-            // 检测回车键按下（玩家尝试发送消息）
-            if (Main.keyState.IsKeyDown(Keys.Enter) && !Main.oldKeyState.IsKeyDown(Keys.Enter))
-            {
-                if (!string.IsNullOrWhiteSpace(currentText))
-                {
-                    string query = ExtractQuery(currentText);
-                    
-                    if (!string.IsNullOrEmpty(query) && !_isProcessing)
-                    {
-                        // 拦截此消息
-                        Main.chatText = "";
-                        _lastChatText = "";
-                        
-                        // 关闭聊天框
-                        Main.drawingPlayerChat = false;
-                        Main.chatRelease = true;
-                        
-                        // 处理AI查询
-                        ProcessAIQuery(query);
-                    }
-                }
-            }
-            
-            _lastChatText = currentText;
         }
         
         /// <summary>
@@ -100,6 +97,8 @@ namespace GuideAIMod
         /// </summary>
         private void ProcessAIQuery(string query)
         {
+            var logger = ModContent.GetInstance<GuideAIMod>().Logger;
+            
             if (string.IsNullOrWhiteSpace(query))
             {
                 SendLocalChat("[AI向导] 请输入问题，例如: /ai 克苏鲁之眼怎么打", Color.Yellow);
@@ -124,8 +123,10 @@ namespace GuideAIMod
                     // 优先使用ReAct
                     if (_bridge.IsAvailable)
                     {
+                        logger.Info("[ChatAI] 调用ReAct...");
                         var result = _bridge.AskReAct(query, playerContext);
                         answer = result.Success ? result.Answer : "[错误] " + result.Answer;
+                        logger.Info($"[ChatAI] ReAct返回: {answer.Length}字符");
                     }
                     else
                     {
@@ -140,6 +141,7 @@ namespace GuideAIMod
                 }
                 catch (Exception ex)
                 {
+                    logger.Error($"[ChatAI] 异常: {ex}");
                     Main.QueueMainThreadAction(() => {
                         SendLocalChat($"[AI向导] 错误: {ex.Message}", Color.Red);
                         _isProcessing = false;
