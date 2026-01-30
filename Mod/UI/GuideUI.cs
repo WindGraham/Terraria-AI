@@ -309,7 +309,55 @@ namespace GuideAIMod.UI
                     catch { }
                 }
                 
-                // 1. Python知识库
+                // === 优先级1: DeepSeek AI API（用户期望的主要回答来源）===
+                if (mod?.AI?.IsConfigured == true)
+                {
+                    try
+                    {
+                        // 先获取知识库上下文（如果有）
+                        string knowledge = "";
+                        if (_bridge?.IsAvailable == true)
+                        {
+                            var kbResult = _bridge.Ask(question, progress);
+                            if (kbResult.Success && kbResult.Answer?.Length > 20)
+                                knowledge = kbResult.Answer;
+                        }
+                        
+                        // 构建带知识库的提示词
+                        string prompt;
+                        if (!string.IsNullOrEmpty(knowledge) && knowledge.Length > 50)
+                        {
+                            string kbSnippet = knowledge.Length > 800 ? knowledge.Substring(0, 800) : knowledge;
+                            prompt = "你是泰拉瑞亚游戏专家。基于以下知识库信息回答问题：\n\n" +
+                                     "【知识库信息】\n" + kbSnippet + "\n\n" +
+                                     "【玩家进度】\n" + progress + "\n\n" +
+                                     "【玩家问题】\n" + question + "\n\n" +
+                                     "请基于知识库信息，给玩家一个简洁有用的回答（300字内）：";
+                        }
+                        else
+                        {
+                            prompt = "你是泰拉瑞亚游戏专家。\n\n" +
+                                     "【玩家进度】\n" + progress + "\n\n" +
+                                     "【玩家问题】\n" + question + "\n\n" +
+                                     "请给玩家一个简洁有用的回答（300字内）：";
+                        }
+                        
+                        var task = Task.Run(async () => await mod.AI.AskAIAsync(prompt, ""));
+                        
+                        if (task.Wait(15000) && task.IsCompleted && !string.IsNullOrEmpty(task.Result))
+                        {
+                            string answer = task.Result.Trim();
+                            if (answer.Length > 10)
+                                return Truncate(answer, 800);
+                        }
+                    }
+                    catch (Exception aiEx)
+                    {
+                        ModContent.GetInstance<GuideAIMod>().Logger.Warn($"AI调用失败: {aiEx.Message}");
+                    }
+                }
+                
+                // === 优先级2: Python知识库（降级方案）===
                 if (_bridge?.IsAvailable == true)
                 {
                     var result = _bridge.Ask(question, progress);
@@ -317,24 +365,12 @@ namespace GuideAIMod.UI
                         return Truncate(result.Answer, 600);
                 }
                 
-                // 2. 本地知识
+                // === 优先级3: 本地知识（最后降级）===
                 string local = mod?.Knowledge?.Search(question);
                 if (!string.IsNullOrEmpty(local) && local.Length > 10)
                     return Truncate(local, 600);
                 
-                // 3. AI API
-                if (mod?.AI?.IsConfigured == true)
-                {
-                    var task = Task.Run(async () => {
-                        string prompt = $"泰拉瑞亚游戏问题。{progress}\n问题：{question}\n简洁回答（200字内）：";
-                        return await mod.AI.AskAIAsync(prompt, "");
-                    });
-                    
-                    if (task.Wait(12000) && task.IsCompleted)
-                        return Truncate(task.Result, 500);
-                }
-                
-                return "抱歉，无法回答。请尝试询问Boss攻略或NPC相关问题。";
+                return "抱歉，AI服务暂时不可用，且本地知识库中没有相关信息。请检查网络连接或稍后再试。";
             }
             catch (Exception ex)
             {
