@@ -300,6 +300,7 @@ namespace GuideAIMod.UI
             try
             {
                 var mod = ModContent.GetInstance<GuideAIMod>();
+                var logger = ModContent.GetInstance<GuideAIMod>().Logger;
                 
                 // 获取进度
                 string progress = "";
@@ -309,72 +310,100 @@ namespace GuideAIMod.UI
                     catch { }
                 }
                 
-                // === 优先级1: DeepSeek AI API（用户期望的主要回答来源）===
+                // === 优先级1: DeepSeek AI API（主要回答来源）===
+                logger.Info($"[GuideAI] 问题: {question}, AI配置: {mod?.AI?.IsConfigured}");
+                
                 if (mod?.AI?.IsConfigured == true)
                 {
                     try
                     {
-                        // 先获取知识库上下文（如果有）
+                        // 先获取知识库上下文
                         string knowledge = "";
                         if (_bridge?.IsAvailable == true)
                         {
+                            logger.Info("[GuideAI] 正在查询知识库...");
                             var kbResult = _bridge.Ask(question, progress);
                             if (kbResult.Success && kbResult.Answer?.Length > 20)
                                 knowledge = kbResult.Answer;
+                            logger.Info($"[GuideAI] 知识库结果: {knowledge.Length} 字符");
                         }
                         
-                        // 构建带知识库的提示词
-                        string prompt;
-                        if (!string.IsNullOrEmpty(knowledge) && knowledge.Length > 50)
-                        {
-                            string kbSnippet = knowledge.Length > 800 ? knowledge.Substring(0, 800) : knowledge;
-                            prompt = "你是泰拉瑞亚游戏专家。基于以下知识库信息回答问题：\n\n" +
-                                     "【知识库信息】\n" + kbSnippet + "\n\n" +
-                                     "【玩家进度】\n" + progress + "\n\n" +
-                                     "【玩家问题】\n" + question + "\n\n" +
-                                     "请基于知识库信息，给玩家一个简洁有用的回答（300字内）：";
-                        }
-                        else
-                        {
-                            prompt = "你是泰拉瑞亚游戏专家。\n\n" +
-                                     "【玩家进度】\n" + progress + "\n\n" +
-                                     "【玩家问题】\n" + question + "\n\n" +
-                                     "请给玩家一个简洁有用的回答（300字内）：";
-                        }
+                        // 构建提示词
+                        string prompt = BuildPrompt(question, progress, knowledge);
+                        logger.Info("[GuideAI] 正在调用DeepSeek API...");
                         
                         var task = Task.Run(async () => await mod.AI.AskAIAsync(prompt, ""));
                         
-                        if (task.Wait(15000) && task.IsCompleted && !string.IsNullOrEmpty(task.Result))
+                        if (task.Wait(20000) && task.IsCompleted) // 20秒超时
                         {
-                            string answer = task.Result.Trim();
-                            if (answer.Length > 10)
+                            string answer = task.Result?.Trim() ?? "";
+                            logger.Info($"[GuideAI] API返回: {answer.Length} 字符");
+                            
+                            if (answer.Length > 10 && !answer.StartsWith("[错误]"))
                                 return Truncate(answer, 800);
+                            else if (answer.StartsWith("[错误]"))
+                                logger.Warn($"[GuideAI] API错误: {answer}");
+                        }
+                        else
+                        {
+                            logger.Warn("[GuideAI] API调用超时");
                         }
                     }
                     catch (Exception aiEx)
                     {
-                        ModContent.GetInstance<GuideAIMod>().Logger.Warn($"AI调用失败: {aiEx.Message}");
+                        logger.Warn($"[GuideAI] AI调用异常: {aiEx.Message}");
                     }
                 }
+                else
+                {
+                    logger.Warn("[GuideAI] AI未配置，跳过API调用");
+                }
                 
-                // === 优先级2: Python知识库（降级方案）===
+                // === 优先级2: Python知识库（降级）===
+                logger.Info("[GuideAI] 尝试Python知识库...");
                 if (_bridge?.IsAvailable == true)
                 {
                     var result = _bridge.Ask(question, progress);
+                    logger.Info($"[GuideAI] Python结果: Success={result.Success}, Length={result.Answer?.Length}");
                     if (result.Success && result.Answer?.Length > 10)
                         return Truncate(result.Answer, 600);
                 }
+                else
+                {
+                    logger.Warn("[GuideAI] Python桥接器不可用");
+                }
                 
                 // === 优先级3: 本地知识（最后降级）===
+                logger.Info("[GuideAI] 尝试本地知识库...");
                 string local = mod?.Knowledge?.Search(question);
                 if (!string.IsNullOrEmpty(local) && local.Length > 10)
                     return Truncate(local, 600);
                 
-                return "抱歉，AI服务暂时不可用，且本地知识库中没有相关信息。请检查网络连接或稍后再试。";
+                return "[系统] AI服务调用失败，且本地知识库无匹配结果。请检查：\n1. 网络连接\n2. config.json中的API Key\n3. 查看tModLoader日志了解详情";
             }
             catch (Exception ex)
             {
                 return "错误：" + ex.Message;
+            }
+        }
+        
+        private string BuildPrompt(string question, string progress, string knowledge)
+        {
+            if (!string.IsNullOrEmpty(knowledge) && knowledge.Length > 50)
+            {
+                string kbSnippet = knowledge.Length > 800 ? knowledge.Substring(0, 800) : knowledge;
+                return "你是泰拉瑞亚游戏专家。基于以下知识库信息回答问题：\n\n" +
+                       "【知识库信息】\n" + kbSnippet + "\n\n" +
+                       "【玩家进度】\n" + progress + "\n\n" +
+                       "【玩家问题】\n" + question + "\n\n" +
+                       "请基于知识库信息，给玩家一个简洁有用的回答（300字内）：";
+            }
+            else
+            {
+                return "你是泰拉瑞亚游戏专家。\n\n" +
+                       "【玩家进度】\n" + progress + "\n\n" +
+                       "【玩家问题】\n" + question + "\n\n" +
+                       "请给玩家一个简洁有用的回答（300字内）：";
             }
         }
         
