@@ -264,53 +264,60 @@ namespace GuideAIMod.UI
                     catch { }
                 }
                 
-                // === 优先级1: DeepSeek AI API（主要回答来源）===
-                logger.Info($"[GuideAI] 问题: {question}, AI配置: {mod?.AI?.IsConfigured}");
+                // === 优先级1: ReAct方式（AI自主决定查询）===
+                logger.Info($"[GuideAI] 问题: {question}, 使用ReAct模式");
                 
+                if (_bridge?.IsAvailable == true)
+                {
+                    try
+                    {
+                        logger.Info("[GuideAI] 启动ReAct推理...");
+                        var reactResult = _bridge.AskReAct(question, progress);
+                        
+                        if (reactResult.Success && reactResult.Answer?.Length > 10)
+                        {
+                            logger.Info($"[GuideAI] ReAct完成，工具: {string.Join(", ", reactResult.Sources ?? new string[0])}");
+                            return Truncate(reactResult.Answer, 800);
+                        }
+                        else
+                        {
+                            logger.Warn($"[GuideAI] ReAct失败: {reactResult.Answer}");
+                        }
+                    }
+                    catch (Exception reactEx)
+                    {
+                        logger.Warn($"[GuideAI] ReAct异常: {reactEx.Message}");
+                    }
+                }
+                
+                // === 优先级2: 传统DeepSeek API（降级）===
+                logger.Info("[GuideAI] 降级到传统API模式...");
                 if (mod?.AI?.IsConfigured == true)
                 {
                     try
                     {
-                        // 先获取知识库上下文
                         string knowledge = "";
                         if (_bridge?.IsAvailable == true)
                         {
-                            logger.Info("[GuideAI] 正在查询知识库...");
                             var kbResult = _bridge.Ask(question, progress);
                             if (kbResult.Success && kbResult.Answer?.Length > 20)
                                 knowledge = kbResult.Answer;
-                            logger.Info($"[GuideAI] 知识库结果: {knowledge.Length} 字符");
                         }
                         
-                        // 构建提示词
                         string prompt = BuildPrompt(question, progress, knowledge);
-                        logger.Info("[GuideAI] 正在调用DeepSeek API...");
-                        
                         var task = Task.Run(async () => await mod.AI.AskAIAsync(prompt, ""));
                         
-                        if (task.Wait(20000) && task.IsCompleted) // 20秒超时
+                        if (task.Wait(20000) && task.IsCompleted)
                         {
                             string answer = task.Result?.Trim() ?? "";
-                            logger.Info($"[GuideAI] API返回: {answer.Length} 字符");
-                            
                             if (answer.Length > 10 && !answer.StartsWith("[错误]"))
                                 return Truncate(answer, 800);
-                            else if (answer.StartsWith("[错误]"))
-                                logger.Warn($"[GuideAI] API错误: {answer}");
-                        }
-                        else
-                        {
-                            logger.Warn("[GuideAI] API调用超时");
                         }
                     }
                     catch (Exception aiEx)
                     {
-                        logger.Warn($"[GuideAI] AI调用异常: {aiEx.Message}");
+                        logger.Warn($"[GuideAI] 传统API异常: {aiEx.Message}");
                     }
-                }
-                else
-                {
-                    logger.Warn("[GuideAI] AI未配置，跳过API调用");
                 }
                 
                 // === 优先级2: Python知识库（降级）===
