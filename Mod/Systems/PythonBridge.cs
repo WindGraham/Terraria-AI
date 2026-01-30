@@ -14,7 +14,9 @@ namespace GuideAIMod.Systems
     {
         private string _pythonPath;
         private string _bridgeScriptPath;
+        private string _reactScriptPath;
         private bool _available = false;
+        private bool _reactAvailable = false;
 
         public bool IsAvailable => _available;
 
@@ -34,6 +36,7 @@ namespace GuideAIMod.Systems
 
             // 查找 MCP 桥接脚本
             string home = Environment.GetEnvironmentVariable("HOME") ?? "";
+            string modPath = Path.GetDirectoryName(typeof(PythonBridge).Assembly.Location) ?? "";
             
             // 路径1: 项目目录（开发时）
             _bridgeScriptPath = Path.Combine(home, 
@@ -42,12 +45,22 @@ namespace GuideAIMod.Systems
             // 路径2: Mod源目录
             if (!File.Exists(_bridgeScriptPath))
             {
-                string modPath = Path.GetDirectoryName(typeof(PythonBridge).Assembly.Location) ?? "";
                 _bridgeScriptPath = Path.Combine(modPath, "Python", "mcp_bridge.py");
+            }
+            
+            // ReAct桥接脚本路径
+            _reactScriptPath = Path.Combine(modPath, "Python", "react_bridge.py");
+            if (!File.Exists(_reactScriptPath))
+            {
+                _reactScriptPath = Path.Combine(home,
+                    "Projects/TerrariaWiki/terraria_wiki/Python/react_bridge.py");
             }
             
             _available = !string.IsNullOrEmpty(_pythonPath) && 
                         File.Exists(_bridgeScriptPath);
+            
+            _reactAvailable = !string.IsNullOrEmpty(_pythonPath) &&
+                             File.Exists(_reactScriptPath);
 
             if (!_available)
             {
@@ -119,6 +132,70 @@ namespace GuideAIMod.Systems
                 { 
                     Success = false, 
                     Answer = $"知识库调用异常: {ex.Message}" 
+                };
+            }
+        }
+
+        /// <summary>
+        /// ReAct方式提问 - AI自主决定何时查询知识库
+        /// </summary>
+        public MCPResult AskReAct(string question, string playerProgress = "")
+        {
+            if (!_reactAvailable)
+            {
+                // 降级到普通MCP
+                return Ask(question, playerProgress);
+            }
+
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = _pythonPath,
+                    Arguments = $"\"{_reactScriptPath}\" \"{Escape(question)}\" \"{Escape(playerProgress)}\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(psi);
+                if (process == null)
+                    return new MCPResult { Success = false, Answer = "无法启动 ReAct 进程" };
+
+                string output = process.StandardOutput.ReadToEnd();
+                string error = process.StandardError.ReadToEnd();
+
+                process.WaitForExit(25000); // ReAct可能需要更长时间 25秒
+
+                if (!string.IsNullOrEmpty(error))
+                {
+                    ModContent.GetInstance<GuideAIMod>()?.Logger.Warn($"ReAct error: {error}");
+                }
+
+                if (string.IsNullOrEmpty(output))
+                {
+                    return new MCPResult
+                    {
+                        Success = false,
+                        Answer = "ReAct查询无返回结果"
+                    };
+                }
+
+                var result = JsonConvert.DeserializeObject<MCPResult>(output.Trim());
+                return result ?? new MCPResult
+                {
+                    Success = false,
+                    Answer = "无法解析ReAct返回结果"
+                };
+            }
+            catch (Exception ex)
+            {
+                ModContent.GetInstance<GuideAIMod>()?.Logger.Error($"ReAct Bridge error: {ex}");
+                return new MCPResult
+                {
+                    Success = false,
+                    Answer = $"ReAct调用异常: {ex.Message}"
                 };
             }
         }
