@@ -8,9 +8,9 @@ using GuideAIMod.UI;
 namespace GuideAIMod
 {
     /// <summary>
-    /// UI 系统管理
+    /// UI 系统管理 - 已禁用，使用ChatSystem替代
     /// </summary>
-    public class GuideUISystem : ModSystem
+    public class GuideUISystem_DISABLED : ModSystem
     {
         private UserInterface _interface = null!;
         private SimpleChatUI _ui = null!;
