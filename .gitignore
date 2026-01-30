@@ -49,5 +49,5 @@ ai_knowledge_base.json
 ai_knowledge_base_compact.json
 download_progress.json
 
-# 但保留清理后的数据库（用于知识库）
-# wiki_cleaned/ 目录是要推送的
+# 清理后的数据库（太大，不推送）
+wiki_cleaned/
